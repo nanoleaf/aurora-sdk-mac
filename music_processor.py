@@ -13,13 +13,15 @@
 # limitations under the License.
 
 import pyaudio
+import librosa
+import numpy as np
+import argparse
 import socket
 import sys
 import threading
-import numpy as np
-import librosa
 import datetime as dt
 from time import sleep
+from distutils.version import StrictVersion
 
 
 pyaudio_lock = threading.Lock()
@@ -125,29 +127,118 @@ def update_magnitude_scaling(mag, scalar, min_scalar):
     return updated_scalar
 
 
-def process_music_data(data_in, n_fft, n_output_bins, mag_scalar, mag_scalar_min):
+def visualizer(data_in):
+    scalar = 5
+    hi_limit = 100
+    value = np.sum(np.abs(data_in) ** 2) * scalar
+
+    if value > hi_limit:
+        value = hi_limit
+
+    value = int(value)
+
+    # back to front of row
+    sys.stdout.write('\r')
+
+    # print | followed by spaces
+    for i in range(0, value, 1):
+        sys.stdout.write('|')
+    for i in range(value, hi_limit, 1):
+        sys.stdout.write(' ')
+
+    # flush output
+    sys.stdout.flush()
+
+
+def check_min_versions():
+    ret = True
+
+    # pyaudio
+    vers_required = "0.2.10"
+    vers_current = pyaudio.__version__
+    if StrictVersion(vers_current) < StrictVersion(vers_required):
+        print "Error: minimum pyaudio vers: {}, current vers {}".format(vers_required, vers_current)
+        ret = False
+
+    # librosa
+    vers_required = "0.4.3"
+    vers_current = librosa.__version__
+    if StrictVersion(vers_current) < StrictVersion(vers_required):
+        print "Error: minimum librosa vers: {}, current vers {}".format(vers_required, vers_current)
+        ret = False
+
+    # numpy
+    vers_required = "1.9.0"
+    vers_current = np.__version__
+    if StrictVersion(vers_current) < StrictVersion(vers_required):
+        print "Error: minimum numpy vers: {}, current vers {}".format(vers_required, vers_current)
+        ret = False
+
+    return ret
+
+
+def get_output_fft_bins(fft_mag, n_out):
+    n_in = len(fft_mag)
+    step_size = int(n_in/n_out)
+    fft_out = np.zeros(n_out)
+    n_filled = 0
+    i = 0
+    while n_filled < n_out: #for i in range(0, n_in, step_size):
+        acc = np.sum(fft_mag[i:min(i+step_size, n_in)])
+        i += step_size
+        # saturate to 8-bit unsigned
+        if acc > 255:
+            acc = 255
+        fft_out[n_filled] = acc
+        n_filled += 1
+    return fft_out[0:n_out]
+
+
+def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visual):
+    # length of data_np after conversion is 1024
+    # length of data processing unit is set to 256
+    data_len = 256
     data_np = np.fromstring(data_in, 'Float32')
+    data_np = data_np[0: data_len]
 
-     # decimate data
-    global sample_rate
-    data_np = librosa.resample(data_np, sample_rate, sample_rate/2)
-
-    # short time fft over n_fft samples
-    fft_data = librosa.stft(data_np, n_fft,
-                            hop_length=n_fft,
-                            center=False)
-
-    fft_data_mag = np.abs(fft_data) ** 2
-    fft_data_mag = fft_data_mag[:, 0]
-
-    # magnitude scaling
-    mag_scalar = update_magnitude_scaling(fft_data_mag, mag_scalar, mag_scalar_min)
-    fft_data_mag_norm = fft_data_mag / mag_scalar
-    fft_output = (fft_data_mag_norm * (2 ** 7-1)).astype(np.uint8)
-    fft_output = fft_output[0:n_output_bins]
+    # visualizer
+    if is_visual:
+        visualizer(data_np)
 
     # energy
-    energy_output = (fft_output.sum()).astype(np.uint16)
+    if is_energy:
+        energy = np.abs(data_np) ** 2
+        energy = energy.sum()
+        energy *= 2**6
+        energy_output = energy.astype(np.uint16)
+    else:
+        energy_output = np.zeros(2).astype(np.uint16)
+
+    # fft
+    if is_fft:
+        global sample_rate
+
+        # down-sample by 4, with filtering, energy not scaled
+        data_np = librosa.resample(data_np,
+                                   sample_rate,
+                                   sample_rate/4,
+                                   res_type='kaiser_fast')
+
+        # short time fft over n_fft samples
+        fft_data = librosa.stft(data_np, n_fft,
+                                hop_length=n_fft,
+                                center=False)
+
+        fft_data_mag = np.abs(fft_data[0:n_fft/2]) ** 2
+        # fft_data_mag = fft_data_mag[:, 0]
+
+        # magnitude scaling
+        fft_data_mag *= 2**3
+        fft_output = get_output_fft_bins(fft_data_mag, n_output_bins)
+        fft_output = fft_output.astype(np.uint8)
+    else:
+        fft_output = np.zeros(n_output_bins).astype(np.uint8)
+
     return fft_output, energy_output
 
 
@@ -157,29 +248,35 @@ if __name__ == '__main__':
     input_format = pyaudio.paFloat32
     min_delay = 50
 
-    n_fft = 2 ** 7
-    n_bins_out = 32
-
-    mag_scalar = 1.0
-    mag_scalar_min = 0.1
+    n_fft = 64
 
     udp_host = "127.0.0.1"
     udp_port = 27182
     sound_feature_udp_port = 27184
 
-    # start pyaudio thread
-    pa_thread = PyAudioThread(input_format)
-    pa_thread.start()
-    sleep(1)
+    # check minimum versions of imported modules
+    if not check_min_versions():
+        print "Minimum version not satisfied, please upgrade your modules as indicated!"
+        exit(1)
+
+    # parse command arguments
+    parser = argparse.ArgumentParser(description="Music processing and streaming script for the Nanoleaf Rhythm SDK")
+    parser.add_argument("--viz", help="turn on simple visualizer, please limit use to setup and debug", action="store_true")
+    args = parser.parse_args()
+    visualize = args.viz
 
     # open udp socket to receive
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind((udp_host, sound_feature_udp_port))
 
+    # prompt user to start plugin
+    print "Music processor initialized... please run your plugin to continue or ctrl+c to exit"
+
     # receive sound feature
-    packet, addr = udp_socket.recvfrom(20)  # blocking
+    packet, addr = udp_socket.recvfrom(20)  # blocking, ctrl+c to exit
     from_host = addr[0]
     udp_socket.close()
+    print "Plugin detected... continuing"
 
     # packet contains: [b i b] where b is boolean, i is integer
     if from_host == udp_host:
@@ -188,7 +285,12 @@ if __name__ == '__main__':
     is_fft = int(tokens[0])
     n_bins_out = int(tokens[1])
     is_energy = int(tokens[2])
-    print "sound feature: fft {} bins {} energy {}".format(is_fft, n_bins_out, is_energy)
+    print "Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy)
+
+    # start pyaudio thread
+    pa_thread = PyAudioThread(input_format)
+    pa_thread.start()
+    sleep(1)
 
     # open new udp socket to send
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -199,9 +301,13 @@ if __name__ == '__main__':
     data = []
     data_updated = False
     stop = False
-    print "starting sound data transfer"
+    print "Music processor active!"
+    if visualize:
+        print "Visualize on: try a loud clap and a simple sound bar should appear"
+    else:
+        print "If nothing seems to be happening, try running with --viz"
 
-    # start pyaudio thread
+    # start key press thread
     kp_thread = KeyPressThread()
     kp_thread.start()
 
@@ -217,7 +323,11 @@ if __name__ == '__main__':
         if data_updated:
 
             (fft, energy) = process_music_data(data,
-                                               n_fft, n_bins_out, mag_scalar, mag_scalar_min)
+                                               is_fft,
+                                               is_energy,
+                                               n_bins_out,
+                                               n_fft,
+                                               visualize)
 
             t_end = dt.datetime.now()
             t_processing = (t_end - t_start).microseconds / 1e3
@@ -229,16 +339,10 @@ if __name__ == '__main__':
 
             t_start = dt.datetime.now()
 
-            if is_fft:
-                message = fft.tobytes()
-            else:
-                message = (np.zeros(n_bins_out).astype(np.uint8)).tobytes()
-
-            if is_energy:
-                message += energy.tobytes()
-            else:
-                message += (np.zeros(2).astype(np.uint16)).tobytes()
-
+            # message to simulator
+            message = fft.tobytes() + energy.tobytes()
+            # print "fft {} energy {}".format(fft, energy)
+            
             udp_socket.sendto(message, (udp_host, udp_port))
 
         # check for key press to quit loop
@@ -247,7 +351,7 @@ if __name__ == '__main__':
         keypress_lock.release()
 
         if stop:
-            print "stopping sound data transfer"
+            print "Stopping music processor!"
             break
 
     # stop pyaudio thread

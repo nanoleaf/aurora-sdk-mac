@@ -90,7 +90,7 @@ The music_processor python script must be run first, by entering:
 
 Next, to run the simulator, enter:
 
-`./SoundModuleSimulator –p <absolute path to .so file> –i <ip address>`
+`./SoundModuleSimulator -p <absolute path to .so file> -i <ip address>`
 
 
 The *.so* file is the compiled plugin that you wish to run on the Aurora. 

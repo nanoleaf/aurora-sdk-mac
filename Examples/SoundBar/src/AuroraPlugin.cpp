@@ -27,19 +27,20 @@
  */
 
 #include "AuroraPlugin.h"
-#include "layoutProcessingUtils.h"
+#include "LayoutProcessingUtils.h"
 #include "ColorUtils.h"
 #include "DataManager.h"
 #include "SoundUtils.h"
 #include <math.h>
 #include <limits.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 	void initPlugin(bool* isSoundPlugin);
 	void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime);
+	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime);
 	void pluginCleanup();
 #ifdef __cplusplus
 }
@@ -47,7 +48,7 @@ extern "C" {
 
 LayoutData* layoutData;
 FrameSlice_t* frameSlices = NULL;
-int nFrameSlices = 0;
+int nPanelslices = 0;
 
 int findMaxExpanse(){
 	int maxDegrees = 0;
@@ -75,8 +76,6 @@ int findMaxExpanse(){
 			maxExpanse = (maxX - minX);
 			maxDegrees = d*30;
 		}
-		printf ("Max expanse : %d\n", maxExpanse);
-		printf ("d %d\n", d);
 	}
 
 	//turn the layout back to the maDegrees
@@ -100,10 +99,9 @@ void initPlugin(bool* isSoundPlugin){
 
 	//rotate the layout so that right to left have the maximum number of frame slices
 	int angle = findMaxExpanse();
-	printf ("max expanse found at angle %d", angle);
 
-	//quantizes the layout into frameslices. See SDK documentation for more information
-	getFrameSlicesFromLayoutForTriangle(layoutData, &frameSlices, &nFrameSlices, angle);
+	//quantizes the layout into framelices. See SDK documentation for more information
+	getFrameSlicesFromLayoutForTriangle(layoutData, &frameSlices, &nPanelslices, angle);
 }
 
 /**
@@ -129,12 +127,12 @@ void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
  * if its a sound visualization plugin, this function is called at an interval of 50ms or more.
  *
  * @param soundFeature: Carries the processed sound data from the soundModule, NULL if effects plugin
- * @param frames: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
+ * @param frame: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
  * Maximum size of this buffer is equal to the number of panels
- * @param nFrames: fill with the number of frames in frames
+ * @param nPanels: fill with the number of frame in frame
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime){
+void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime){
 	static const uint32_t maxBarLength = 100;
 	static int barMarker = 0;
 	static const int barMarkerInertialRelaxationStep = 9.0;
@@ -153,16 +151,16 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
 	}
 
 	//map the length of the soundbar to the Aurora Layout. In this case,
-	//calculate the number of frames that are affected from the total number of frame slices
-	int nFramesAffected = (barMarker*nFrameSlices)/maxBarLength;
-	if (nFramesAffected > nFrameSlices){
-		nFramesAffected = nFrameSlices;
+	//calculate the number of frame that are affected from the total number of frame slices
+	int nPanelsAffected = (barMarker*nPanelslices)/maxBarLength;
+	if (nPanelsAffected > nPanelslices){
+		nPanelsAffected = nPanelslices;
 	}
 
 	int x_start = 325;
 	int x = x_start;
-	int x_step = (nFramesAffected == 0) ? 0 : x_start/nFramesAffected;
-	for (int i = 0; i < nFramesAffected; i++){
+	int x_step = (nPanelsAffected == 0) ? 0 : x_start/nPanelsAffected;
+	for (int i = 0; i < nPanelsAffected; i++){
 		x = x - x_step;
 		int x_t = (x > 255) ? 255 : x;
 		//the net color is a mix between a weighted base color and bar color.
@@ -172,21 +170,21 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
 		netColor = (((barColor*x_t)/255) + ((baseColor*(255-x_t)))/255);
 		netColor = limitRGB(netColor, 255, 0);
 		for (int j = 0; j < frameSlices[i].panelIds.size(); j++){
-			frames[frameIndex].panelId = frameSlices[i].panelIds[j];
-			frames[frameIndex].r = netColor.R;
-			frames[frameIndex].g = netColor.G;
-			frames[frameIndex].b = netColor.B;
-			frames[frameIndex].transTime = 1;
+			frame[frameIndex].panelId = frameSlices[i].panelIds[j];
+			frame[frameIndex].r = netColor.R;
+			frame[frameIndex].g = netColor.G;
+			frame[frameIndex].b = netColor.B;
+			frame[frameIndex].transTime = 1;
 			frameIndex++;
 		}
 	}
-	for (int i = nFramesAffected; i < nFrameSlices; i++){
+	for (int i = nPanelsAffected; i < nPanelslices; i++){
 		for (int j = 0; j < frameSlices[i].panelIds.size(); j++){
-			frames[frameIndex].panelId = frameSlices[i].panelIds[j];
-			frames[frameIndex].r = baseColor.R;
-			frames[frameIndex].g = baseColor.G;
-			frames[frameIndex].b = baseColor.B;
-			frames[frameIndex].transTime = 2;
+			frame[frameIndex].panelId = frameSlices[i].panelIds[j];
+			frame[frameIndex].r = baseColor.R;
+			frame[frameIndex].g = baseColor.G;
+			frame[frameIndex].b = baseColor.B;
+			frame[frameIndex].transTime = 2;
 			frameIndex++;
 		}
 	}
@@ -200,7 +198,7 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
 		}
 	}
 
-	*nFrames = frameIndex;
+	*nPanels = frameIndex;
 }
 
 /**

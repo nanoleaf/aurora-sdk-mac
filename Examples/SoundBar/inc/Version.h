@@ -9,7 +9,7 @@
 #define INC_VERSION_H_
 
 
-#define SDK_VERSION "0.2"
+#define SDK_VERSION "1.1"
 
 
 #endif /* INC_VERSION_H_ */

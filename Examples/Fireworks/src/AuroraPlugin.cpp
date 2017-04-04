@@ -35,6 +35,7 @@
 #include "DataManager.h"
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,7 +43,7 @@ extern "C" {
 
 	void initPlugin(bool* isSoundPlugin);
 	void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime);
+	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime);
 	void pluginCleanup();
 
 #ifdef __cplusplus
@@ -67,8 +68,6 @@ int nFireWorkColors = 0;
 void initPlugin(bool* isSoundPlugin){
 	//do allocation here
 	getColorPalette(&colorPalette, &nColors);
-	printf(" --- nColors %d ---\n", nColors);
-
 	if (nColors == 0){
 		bkGrndColor = (RGB_t){0, 0, 0};
 	}
@@ -81,7 +80,6 @@ void initPlugin(bool* isSoundPlugin){
 		nFireWorkColors = nColors - 1;
 		for (int i = 1; i < nColors; i++){
 			fireworkColors[i-1] = colorPalette[i];
-			printf("fireworkColor [%d]: %d %d %d\n", i-1, fireworkColors[i-1].R, fireworkColors[i-1].G, fireworkColors[i-1].B);
 		}
 	}
 	else{
@@ -115,12 +113,12 @@ void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
  * if its a sound visualization plugin, this function is called at an interval of 50ms or more.
  *
  * @param soundFeature: Carries the processed sound data from the soundModule, NULL if effects plugin
- * @param frames: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
+ * @param frame: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
  * Maximum size of this buffer is equal to the number of panels
- * @param nFrames: fill with the number of frames in frames
+ * @param nPanels: fill with the number of frame in frame
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime){
+void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime){
 #define SKIP_COUNT 3
 	// a tiny block of code that allows the developer to skips calls of this function.
 	//if this plugin wishes to run only every 150ms for instance, the skip count would be set to 3
@@ -151,29 +149,29 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
 	bkGrndHue += bkGrndHueStep;
 	bkGrndHue = (bkGrndHue >= 360) ? 0 : bkGrndHue;
 
-	HSVtoRGB((HSV_t){bkGrndHue, 100, 30}, &bkGrndColor);
+    HSVtoRGB((HSV_t){(int)bkGrndHue, 100, 30}, &bkGrndColor);
 	for (int i = 0; i < layoutData->nPanels; i++){
 		int randomNumber = rand()%128;
-		frames[frameIndex].panelId = layoutData->panels[i].panelId;
+		frame[frameIndex].panelId = layoutData->panels[i].panelId;
 		//if the random number is less than probability then light up a panel,
 		//otherwise relax the panel to the background color
 		////higher the probability number, higher the chance of the if block getting executed
 		if (randomNumber < probability){
 			RGB_t droppedColor = fireworkColors[rand()%nFireWorkColors];
-			frames[frameIndex].r = droppedColor.R;
-			frames[frameIndex].g = droppedColor.G;
-			frames[frameIndex].b = droppedColor.B;
-			frames[frameIndex].transTime = 0;
+			frame[frameIndex].r = droppedColor.R;
+			frame[frameIndex].g = droppedColor.G;
+			frame[frameIndex].b = droppedColor.B;
+			frame[frameIndex].transTime = 0;
 		}
 		else {
-			frames[frameIndex].r = bkGrndColor.R;
-			frames[frameIndex].g = bkGrndColor.G;
-			frames[frameIndex].b = bkGrndColor.B;
-			frames[frameIndex].transTime = 3;
+			frame[frameIndex].r = bkGrndColor.R;
+			frame[frameIndex].g = bkGrndColor.G;
+			frame[frameIndex].b = bkGrndColor.B;
+			frame[frameIndex].transTime = 3;
 		}
 		frameIndex++;
 	}
-	*nFrames = frameIndex;
+	*nPanels = frameIndex;
 
 }
 

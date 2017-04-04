@@ -31,6 +31,7 @@
 #include "LayoutProcessingUtils.h"
 #include "ColorUtils.h"
 #include "DataManager.h"
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +39,7 @@ extern "C" {
 
 	void initPlugin(bool* isSoundPlugin);
 	void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime);
+	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime);
 	void pluginCleanup();
 
 #ifdef __cplusplus
@@ -70,11 +71,8 @@ void initPlugin(bool* isSoundPlugin){
 
 	rotateAuroraPanels(layoutData, &layoutData->globalOrientation);
 
-	//quantizes the layout into frameslices. See SDK documentation for more information
+	//quantizes the layout into framelices. See SDK documentation for more information
 	getFrameSlicesFromLayoutForTriangle(layoutData, &frameSlices, &nFrameSlices, layoutData->globalOrientation);
-	printf("sideLength %d\n", Shape::sideLength);
-	printf ("nFrameSlices %d\n", nFrameSlices);
-	printf("initPlugin\n");
 }
 
 /**
@@ -88,20 +86,20 @@ void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
 }
 
 /**
- * A helper function thats fills up the frames array at framesIndex with a specified frameslices
+ * A helper function thats fills up the frame array at frameIndex with a specified framelices
  * and a specified hue. the color is the specified hue at 100% saturation and brightness.
  * Note that the FrameSlice_t structure is just a vector of panels at that frame slice
  */
-void fillUpFramesArray(FrameSlice_t* frameSlice, Frame_t* frames, int* framesIndex, int hue){
+void fillUpFramesArray(FrameSlice_t* frameSlice, Frame_t* frame, int* frameIndex, int hue){
 	static RGB_t rgb;
 	for (int i = 0; i < frameSlice->panelIds.size(); i++){
-		frames[*framesIndex].panelId = frameSlice->panelIds[i];
+		frame[*frameIndex].panelId = frameSlice->panelIds[i];
 		HSVtoRGB((HSV_t){hue, 100, 100}, &rgb);
-		frames[*framesIndex].r = rgb.R;
-		frames[*framesIndex].g = rgb.G;
-		frames[*framesIndex].b = rgb.B;
-		frames[*framesIndex].transTime = transTime;
-		(*framesIndex)++;
+		frame[*frameIndex].r = rgb.R;
+		frame[*frameIndex].g = rgb.G;
+		frame[*frameIndex].b = rgb.B;
+		frame[*frameIndex].transTime = transTime;
+		(*frameIndex)++;
 	}
 }
 
@@ -114,30 +112,30 @@ void fillUpFramesArray(FrameSlice_t* frameSlice, Frame_t* frames, int* framesInd
  * if its a sound visualization plugin, this function is called at an interval of 50ms or more.
  *
  * @param soundFeature: Carries the processed sound data from the soundModule, NULL if effects plugin
- * @param frames: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
+ * @param frame: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
  * Maximum size of this buffer is equal to the number of panels
- * @param nFrames: fill with the number of frames in frames
+ * @param nPanels: fill with the number of frame in frame
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime){
+void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime){
 
 	/**
 	 * the hue variable increases by 30 degrees everytime this function is called (which is every sleepTime seconds)
 	 * the spaitalHue variable, runs over the frameSlices outer to inner, and increments by 15 degrees (hueStep)
-	 * The frameSlices are from left to right of the rotated layout, so the outer will be the first and the last elements of the frameslices array
-	 * and the inner the middle element of the frameslices array
+	 * The frameSlices are from left to right of the rotated layout, so the outer will be the first and the last elements of the framelices array
+	 * and the inner the middle element of the framelices array
 	 */
 	int index = 0;
 	int spatialHue = hue;
 	int hueStep = 15;
 	if (nFrameSlices % 2 != 0){
-		fillUpFramesArray(&frameSlices[nFrameSlices/2], frames, &index, spatialHue%360);
+		fillUpFramesArray(&frameSlices[nFrameSlices/2], frame, &index, spatialHue%360);
 		spatialHue += hueStep;
 	}
 
 	for (int i = nFrameSlices/2 - 1; i >= 0; i--){
-		fillUpFramesArray(&frameSlices[i], frames, &index, spatialHue%360);
-		fillUpFramesArray(&frameSlices[nFrameSlices - 1 - i], frames, &index, spatialHue%360);
+		fillUpFramesArray(&frameSlices[i], frame, &index, spatialHue%360);
+		fillUpFramesArray(&frameSlices[nFrameSlices - 1 - i], frame, &index, spatialHue%360);
 		spatialHue += hueStep;
 	}
 
@@ -146,7 +144,7 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
 		hue = 0;
 	}
 
-	*nFrames = index;
+	*nPanels = index;
 	//in a non-music effect, the sleeptime is determined by the plugin itself.
 	//Important that this variable is set correctly by the plugin.
 	*sleepTime = transTime;
