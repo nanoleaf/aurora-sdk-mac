@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+
+# C
+*.so
+*.d
+*.o
+
+# SoundModuleSimulator
+auth_tokens
+
+# Examples
+Examples/*
