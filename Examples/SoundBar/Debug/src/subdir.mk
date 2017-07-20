@@ -4,14 +4,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../src/AuroraPlugin.cpp 
+../src/AuroraPlugin.cpp \
+../src/AveragingFilter.cpp
 
 OBJS += \
-./src/AuroraPlugin.o 
+./src/AuroraPlugin.o \
+./src/AveragingFilter.o 
 
 CPP_DEPS += \
-./src/AuroraPlugin.d 
-
+./src/AuroraPlugin.d \
+./src/AveragingFilter.d
 
 # Each subdirectory must supply rules for building sources it contributes
 src/%.o: ../src/%.cpp

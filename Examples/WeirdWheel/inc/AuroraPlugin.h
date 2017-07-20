@@ -26,23 +26,6 @@
 
 #include <stdint.h>
 
-struct SoundFeature_t {
-	int nFFTBins; 		/*number of bins in this feature*/
-	uint8_t* fftBins;	/*the buffer storing the fft*/
-	uint16_t energy; 	/*energy of the sound wave captured*/
-};
-
-struct SoundFeatureRequest_t {
-	bool fft; 			/*set if fft is required*/
-	bool energy;		/*set if energy is required*/
-	int nFftBins; 		/*number of fft bins required, max 32*/
-	SoundFeatureRequest_t(){
-		fft = false;
-		energy = false;
-		nFftBins = 0;
-	}
-};
-
 struct Frame_t {
 	int panelId; 		/*the panelId that this frame element targets*/
 	int r, g, b;		/*the rgb color that it must transition to*/

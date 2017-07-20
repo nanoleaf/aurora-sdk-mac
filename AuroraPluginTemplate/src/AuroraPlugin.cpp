@@ -20,14 +20,15 @@
 #include "LayoutProcessingUtils.h"
 #include "ColorUtils.h"
 #include "DataManager.h"
+#include "PluginFeatures.h"
+#include "Logger.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-	void initPlugin(bool* isSoundPlugin);
-	void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime);
+	void initPlugin();
+	void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime);
 	void pluginCleanup();
 
 #ifdef __cplusplus
@@ -36,42 +37,32 @@ extern "C" {
 
 /**
  * @description: Initialize the plugin. Called once, when the plugin is loaded.
- * This function can be used to load the LayoutData and the colorPalette from the DataManager.
+ * This function can be used to enable rhythm or advanced features,
+ * e.g., to enable energy feature, simply call enableEnergy()
+ * It can also be used to load the LayoutData and the colorPalette from the DataManager.
  * Any allocation, if done here, should be deallocated in the plugin cleanup function
  *
- * @param isSoundPlugin: Setting this flag will indicate that it is a sound plugin, and accordingly
- * sound data will be passed in. If not set, the plugin will be considered an effects plugin
- *
  */
-void initPlugin(bool* isSoundPlugin){
-	//do allocation here
-}
-
-/**
- * @description: This function is called only if the isSoundPLugin Flag is set in the initPlugin function.
- * Here the plugin is allowed to choose the soundFeatures it needs to run.
- *
- * @param soundFeatureRequest A pointer to a SoundFeatureRequest_t instance
- */
-void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
+void initPlugin(){
 
 }
 
 /**
  * @description: this the 'main' function that gives a frame to the Aurora to display onto the panels
- * If the plugin is an effects plugin the soundFeature buffer will be NULL.
+ * To obtain updated values of enabled features, simply call get<feature_name>, e.g.,
+ * getEnergy(), getIsBeat().
+ *
  * If the plugin is a sound visualization plugin, the sleepTime variable will be NULL and is not required to be
  * filled in
  * This function, if is an effects plugin, can specify the interval it is to be called at through the sleepTime variable
  * if its a sound visualization plugin, this function is called at an interval of 50ms or more.
  *
- * @param soundFeature: Carries the processed sound data from the soundModule, NULL if effects plugin
  * @param frames: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
  * Maximum size of this buffer is equal to the number of panels
  * @param nFrames: fill with the number of frames in frames
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime){
+void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime){
 
 }
 

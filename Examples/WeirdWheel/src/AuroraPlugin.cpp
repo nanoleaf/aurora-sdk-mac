@@ -14,32 +14,21 @@
    limitations under the License.
  */
 
-/*
- * AuroraPlugin.cpp
- *
- *  Created on: Feb 13, 2017
- *      Author: eski
- *  Description:
- *  Very similar to Aurora's Wheel, but instead of moving in a specific direction,
- *  it moves from edges of the layout to the center in 1 dimension
- */
-
-
 
 
 #include "AuroraPlugin.h"
 #include "LayoutProcessingUtils.h"
 #include "ColorUtils.h"
 #include "DataManager.h"
-#include <stdio.h>
+#include "PluginFeatures.h"
+#include "Logger.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-	void initPlugin(bool* isSoundPlugin);
-	void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-	void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime);
+	void initPlugin();
+	void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime);
 	void pluginCleanup();
 
 #ifdef __cplusplus
@@ -54,35 +43,23 @@ int transTime = 15;
 
 /**
  * @description: Initialize the plugin. Called once, when the plugin is loaded.
- * This function can be used to load the LayoutData and the colorPalette from the DataManager.
+ * This function can be used to enable rhythm or advanced features,
+ * e.g., to enable energy feature, simply call enableEnergy()
+ * It can also be used to load the LayoutData and the colorPalette from the DataManager.
  * Any allocation, if done here, should be deallocated in the plugin cleanup function
  *
- * @param isSoundPlugin: Setting this flag will indicate that it is a sound plugin, and accordingly
- * sound data will be passed in. If not set, the plugin will be considered an effects plugin
- *
  */
-void initPlugin(bool* isSoundPlugin){
-	//do allocation here
-	*isSoundPlugin = false; //not a sound plugin
-
-	//grab the layout data, this function returns a pointer to a statically allocated buffer. Safe to call as many time as required.
-	//Dont delete this pointer. The memory is managed automatically.
-	LayoutData* layoutData = getLayoutData();
-
-	rotateAuroraPanels(layoutData, &layoutData->globalOrientation);
-
-	//quantizes the layout into framelices. See SDK documentation for more information
-	getFrameSlicesFromLayoutForTriangle(layoutData, &frameSlices, &nFrameSlices, layoutData->globalOrientation);
-}
-
-/**
- * @description: This function is called only if the isSoundPLugin Flag is set in the initPlugin function.
- * Here the plugin is allowed to choose the soundFeatures it needs to run.
- *
- * @param soundFeatureRequest A pointer to a SoundFeatureRequest_t instance
- */
-void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
-
+void initPlugin(){
+    //do allocation here
+    
+    //grab the layout data, this function returns a pointer to a statically allocated buffer. Safe to call as many time as required.
+    //Dont delete this pointer. The memory is managed automatically.
+    LayoutData* layoutData = getLayoutData();
+    
+    rotateAuroraPanels(layoutData, &layoutData->globalOrientation);
+    
+    //quantizes the layout into framelices. See SDK documentation for more information
+    getFrameSlicesFromLayoutForTriangle(layoutData, &frameSlices, &nFrameSlices, layoutData->globalOrientation);
 }
 
 /**
@@ -91,63 +68,57 @@ void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest){
  * Note that the FrameSlice_t structure is just a vector of panels at that frame slice
  */
 void fillUpFramesArray(FrameSlice_t* frameSlice, Frame_t* frame, int* frameIndex, int hue){
-	static RGB_t rgb;
-	for (int i = 0; i < frameSlice->panelIds.size(); i++){
-		frame[*frameIndex].panelId = frameSlice->panelIds[i];
-		HSVtoRGB((HSV_t){hue, 100, 100}, &rgb);
-		frame[*frameIndex].r = rgb.R;
-		frame[*frameIndex].g = rgb.G;
-		frame[*frameIndex].b = rgb.B;
-		frame[*frameIndex].transTime = transTime;
-		(*frameIndex)++;
-	}
+    static RGB_t rgb;
+    for (unsigned int i = 0; i < frameSlice->panelIds.size(); i++){
+        frame[*frameIndex].panelId = frameSlice->panelIds[i];
+        HSVtoRGB((HSV_t){hue, 100, 100}, &rgb);
+        frame[*frameIndex].r = rgb.R;
+        frame[*frameIndex].g = rgb.G;
+        frame[*frameIndex].b = rgb.B;
+        frame[*frameIndex].transTime = transTime;
+        (*frameIndex)++;
+    }
 }
 
 /**
  * @description: this the 'main' function that gives a frame to the Aurora to display onto the panels
- * If the plugin is an effects plugin the soundFeature buffer will be NULL.
+ * To obtain updated values of enabled features, simply call get<feature_name>, e.g.,
+ * getEnergy(), getIsBeat().
+ *
  * If the plugin is a sound visualization plugin, the sleepTime variable will be NULL and is not required to be
  * filled in
  * This function, if is an effects plugin, can specify the interval it is to be called at through the sleepTime variable
  * if its a sound visualization plugin, this function is called at an interval of 50ms or more.
  *
- * @param soundFeature: Carries the processed sound data from the soundModule, NULL if effects plugin
- * @param frame: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
+ * @param frames: a pre-allocated buffer of the Frame_t structure to fill up with RGB values to show on panels.
  * Maximum size of this buffer is equal to the number of panels
- * @param nPanels: fill with the number of frame in frame
+ * @param nFrames: fill with the number of frames in frames
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, int* sleepTime){
-
-	/**
-	 * the hue variable increases by 30 degrees everytime this function is called (which is every sleepTime seconds)
-	 * the spaitalHue variable, runs over the frameSlices outer to inner, and increments by 15 degrees (hueStep)
-	 * The frameSlices are from left to right of the rotated layout, so the outer will be the first and the last elements of the framelices array
-	 * and the inner the middle element of the framelices array
-	 */
-	int index = 0;
-	int spatialHue = hue;
-	int hueStep = 15;
-	if (nFrameSlices % 2 != 0){
-		fillUpFramesArray(&frameSlices[nFrameSlices/2], frame, &index, spatialHue%360);
-		spatialHue += hueStep;
-	}
-
-	for (int i = nFrameSlices/2 - 1; i >= 0; i--){
-		fillUpFramesArray(&frameSlices[i], frame, &index, spatialHue%360);
-		fillUpFramesArray(&frameSlices[nFrameSlices - 1 - i], frame, &index, spatialHue%360);
-		spatialHue += hueStep;
-	}
-
-	hue += 30;
-	if (hue > 360){
-		hue = 0;
-	}
-
-	*nPanels = index;
-	//in a non-music effect, the sleeptime is determined by the plugin itself.
-	//Important that this variable is set correctly by the plugin.
-	*sleepTime = transTime;
+void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime){
+    int index = 0;
+    int spatialHue = hue;
+    int hueStep = 15;
+    if (nFrameSlices % 2 != 0){
+        fillUpFramesArray(&frameSlices[nFrameSlices/2], frames, &index, spatialHue%360);
+        spatialHue += hueStep;
+    }
+    
+    for (int i = nFrameSlices/2 - 1; i >= 0; i--){
+        fillUpFramesArray(&frameSlices[i], frames, &index, spatialHue%360);
+        fillUpFramesArray(&frameSlices[nFrameSlices - 1 - i], frames, &index, spatialHue%360);
+        spatialHue += hueStep;
+    }
+    
+    hue += 30;
+    if (hue > 360){
+        hue = 0;
+    }
+    
+    *nFrames = index;
+    //in a non-music effect, the sleeptime is determined by the plugin itself.
+    //Important that this variable is set correctly by the plugin.
+    *sleepTime = transTime;
 }
 
 /**
@@ -156,5 +127,4 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frame, int* nPanels, 
  */
 void pluginCleanup(){
 	//do deallocation here
-	freeFrameSlices(frameSlices);
 }

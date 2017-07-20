@@ -32,22 +32,26 @@
 #include "DataManager.h"
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include "Logger.h"
+#include "PluginFeatures.h"
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    void initPlugin(bool* isSoundPlugin);
-    void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest);
-    void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime);
+    void initPlugin();
+    void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime);
     void pluginCleanup();
 
 #ifdef __cplusplus
 }
 #endif
 
-#define MAX_PALETTE_COLOURS 4   // if more colours then this, we will use just the first this many
-#define MAX_SOURCES 4   // maxiumum sources
+#define MAX_PALETTE_COLOURS 7   // if more colours then this, we will use just the first this many
+#define MAX_SOURCES 7   // maxiumum sources
 #define BASE_COLOUR_R 0 // these three settings defined the background colour; set to black
 #define BASE_COLOUR_G 0
 #define BASE_COLOUR_B 0
@@ -55,10 +59,6 @@ extern "C" {
 #define TRANSITION_TIME 1  // the transition time to send to panels; set to 100ms currently
 #define MINIMUM_INTENSITY 0.2  // the minimum intensity of a source
 #define TRIGGER_THRESHOLD 0.7 // used to calculate whether to add a source
-
-static RGB_t* paletteColours = NULL; // this is our saved pointer to the colour palette
-static int nColours = 0;             // the number of colours in the palette
-static LayoutData *layoutData; // this is our saved pointer to the panel layout information
 
 
 // Here we store the information accociated with each light source like current
@@ -73,6 +73,9 @@ typedef struct {
     int B;
 } source_t;
 
+/** Here we store the information accociated with each frequency bin. This 
+ allows for tracking a degree of historical information.
+ */
 typedef struct {
     uint32_t latest_minimum;
     uint32_t soundPower;
@@ -84,11 +87,26 @@ typedef struct {
     uint32_t secondPreviousPower;
 } freq_bin;
 
-static source_t sources[MAX_PALETTE_COLOURS];
+static RGB_t* paletteColours = NULL; // this is our saved pointer to the colour palette
+static int nColours = 0;             // the number of colours in the palette
+static LayoutData *layoutData; // this is our saved pointer to the panel layout information
+static source_t sources[MAX_PALETTE_COLOURS]; // this is our array for sources
 static int nSources = 0;
-static freq_bin freq_bins[MAX_PALETTE_COLOURS];
+static freq_bin freq_bins[MAX_PALETTE_COLOURS]; // this is our array for frequency bin historical information.
 
-
+/** 
+  * @description: add a value to a running max.
+  * @param: runningMax is current runningMax, valueToAdd is added to runningMax, effectiveTrail  
+  *         defines how many values are effectively tracked. Note this is an approximation. 
+  * @return: int returned as new runningMax.
+  */
+int addToRunningMax(int runningMax, int valueToAdd, int effectiveTrail) {
+    int trail = effectiveTrail;
+    if (valueToAdd > runningMax && effectiveTrail > 1) {
+        trail = trail / 2;
+    }
+    return runningMax - ((float)runningMax / effectiveTrail) + ((float)valueToAdd / trail);
+}
 
 /**
  * @description: Initialize the plugin. Called once, when the plugin is loaded.
@@ -99,47 +117,35 @@ static freq_bin freq_bins[MAX_PALETTE_COLOURS];
  * sound data will be passed in. If not set, the plugin will be considered an effects plugin
  *
  */
-void initPlugin(bool* isSoundPlugin) {
-    *isSoundPlugin = true;
+void initPlugin() {
 
     getColorPalette(&paletteColours, &nColours);  // grab the palette colours and store a pointer to them for later use
-    printf("The palette has %d colours:\n", nColours);
+    PRINTLOG("The palette has %d colours:\n", nColours);
     if(nColours > MAX_PALETTE_COLOURS) {
-        printf("There are too many colours in the palette. using only the first %d\n", MAX_PALETTE_COLOURS);
+        PRINTLOG("There are too many colours in the palette. using only the first %d\n", MAX_PALETTE_COLOURS);
         nColours = MAX_PALETTE_COLOURS;
     }
 
     for (int i = 0; i < nColours; i++) {
-        printf("   %d %d %d\n", paletteColours[i].R, paletteColours[i].G, paletteColours[i].B);
+        PRINTLOG("   %d %d %d\n", paletteColours[i].R, paletteColours[i].G, paletteColours[i].B);
     }
     
-    layoutData = getLayoutData(); // grab the layour data and store a pointer to it for later use
+    layoutData = getLayoutData(); // grab the layout data and store a pointer to it for later use
   
     
-    printf("The layout has %d panels:\n", layoutData->nPanels);
+    PRINTLOG("The layout has %d panels:\n", layoutData->nPanels);
     for (int i = 0; i < layoutData->nPanels; i++) {
-        printf("   Id: %d   X, Y: %lf, %lf\n", layoutData->panels[i].panelId,
+        PRINTLOG("   Id: %d   X, Y: %lf, %lf\n", layoutData->panels[i].panelId,
                layoutData->panels[i].shape->getCentroid().x, layoutData->panels[i].shape->getCentroid().y);
     }
     
+    // here we initialize our freqency bin values so that the plugin starts working reasonably well right away
     for (int i = 0; i < MAX_PALETTE_COLOURS; i++) {
-        freq_bins[i].latest_minimum = 2000000000 / MAX_PALETTE_COLOURS;
-        freq_bins[i].runningMax = 200 / MAX_PALETTE_COLOURS;
+        freq_bins[i].latest_minimum = 0;
+        freq_bins[i].runningMax = 3;
         freq_bins[i].maximumTrigger = 1;
     }
-
-}
-
-/**
- * @description: This function is called only if the isSoundPLugin Flag is set in the initPlugin function.
- * Here the plugin is allowed to choose the soundFeatures it needs to run.
- *
- * @param soundFeatureRequest A pointer to a SoundFeatureRequest_t instance
- */
-void selectSoundFeature(SoundFeatureRequest_t* soundfeatureRequest) {
-    soundfeatureRequest->energy = true;
-    soundfeatureRequest->fft = true;
-    soundfeatureRequest->nFftBins = nColours;
+    enableFft(nColours);
 }
 
 /** Removes a light source from the list of light sources */
@@ -326,10 +332,10 @@ int16_t beat_detector(int i)
     
     //Check for local maximum and if observed, add to running average
     if((freq_bins[i].soundPower + (freq_bins[i].runningMax / 4) < freq_bins[i].previousPower) && (freq_bins[i].previousPower > freq_bins[i].secondPreviousPower)){
-        
-        freq_bins[i].runningMax = freq_bins[i].runningMax - ((float)freq_bins[i].runningMax / 8) + ((float)freq_bins[i].previousPower / 8);
+        freq_bins[i].runningMax = addToRunningMax(freq_bins[i].runningMax, freq_bins[i].previousPower, 4);
     }
     
+    // update latest minimum.
     if(freq_bins[i].soundPower < freq_bins[i].latest_minimum) {
         freq_bins[i].latest_minimum = freq_bins[i].soundPower;
     }
@@ -337,11 +343,13 @@ int16_t beat_detector(int i)
         freq_bins[i].latest_minimum--;
     }
     
+    // criteria for a "beat"; value must exceed minimum plus a threshold of the runningMax.
     if(freq_bins[i].soundPower > freq_bins[i].latest_minimum + (freq_bins[i].runningMax * TRIGGER_THRESHOLD)) {
         freq_bins[i].latest_minimum = freq_bins[i].soundPower;
         beat_detected = 1;
     }
     
+    // update historical information
     freq_bins[i].secondPreviousPower = freq_bins[i].previousPower;
     freq_bins[i].previousPower = freq_bins[i].soundPower;
     
@@ -362,23 +370,17 @@ int16_t beat_detector(int i)
  * @param nFrames: fill with the number of frames in frames
  * @param sleepTime: specify interval after which this function is called again, NULL if sound visualization plugin
  */
-void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames, int* sleepTime) {
+void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime) {
     int R;
     int G;
     int B;
     int i;
-
-//    printf("Energy: %hd   ", soundFeature->energy);
-    
-//    for(i = 0; i < soundFeature->nFFTBins; i++) {
-//        printf("%hhu ", soundFeature->fftBins[i]);
-//    }
-//    printf("\n");
+    uint8_t * fftBins = getFftBins();
 
 
-    // Compute the sound power (or volume)
-    for(i = 0; i < MAX_PALETTE_COLOURS; i++) {
-        freq_bins[i].soundPower = soundFeature->fftBins[i];
+    // Compute the sound power (or volume) in each bin
+    for(i = 0; i < nColours; i++) {
+        freq_bins[i].soundPower = fftBins[i];
         uint8_t beat_detected = beat_detector(i);
         
         if(beat_detected) {
@@ -387,10 +389,16 @@ void getPluginFrame(SoundFeature_t* soundFeature, Frame_t* frames, int* nFrames,
             }
             
             float speed = 0.5;
-            float intensity = 0.0;
+            float intensity = 1.0;
             
             //calculate an intensity ranging from minimum to 1, using log scale
-            intensity = ((log((float)freq_bins[i].soundPower) / log((float)freq_bins[i].maximumTrigger)) * (1.0 - MINIMUM_INTENSITY)) + MINIMUM_INTENSITY;
+            if (freq_bins[i].soundPower > 1 && freq_bins[i].runningMax > 1){
+                intensity = ((log((float)freq_bins[i].soundPower) / log((float)freq_bins[i].runningMax)) * (1.0 - MINIMUM_INTENSITY)) + MINIMUM_INTENSITY;
+            }
+            
+            if (intensity > 1.0) {
+                intensity = 1.0;
+            }
             
             // add a new light source for each beat detected
             addSource(i, intensity, speed);

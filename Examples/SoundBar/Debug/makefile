@@ -10,6 +10,7 @@ RM := rm -rf
 # All of the sources participating in the build are defined here
 -include sources.mk
 -include src/subdir.mk
+-include Mipsel/src/subdir.mk
 -include subdir.mk
 -include objects.mk
 
@@ -39,19 +40,19 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: libSoundBar.so
+all: libAuroraPlugin.so
 
 # Tool invocations
-libSoundBar.so: $(OBJS) $(USER_OBJS)
+libAuroraPlugin.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	g++ -L../Utilities -u _passLayoutData -u _passColorPalette -u _dataManagerCleanup -shared -o "libSoundBar.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -L../Utilities -u _passLayoutData -u _passColorPalette -u _dataManagerCleanup -u _getEnabledFeatures -u _initRhythmFeatures -u _updateRhythmFeatures -u _deinitRhythmFeatures -u _initBeatFeatures -u _updateBeatFeatures -u _deinitBeatFeatures -shared -o "libAuroraPlugin.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(LIBRARIES)$(CC_DEPS)$(C++_DEPS)$(OBJS)$(C_UPPER_DEPS)$(CXX_DEPS)$(C_DEPS)$(CPP_DEPS) libSoundBar.so
+	-$(RM) $(LIBRARIES)$(CC_DEPS)$(C++_DEPS)$(OBJS)$(C_UPPER_DEPS)$(CXX_DEPS)$(C_DEPS)$(CPP_DEPS) libAuroraPlugin.so
 	-@echo ' '
 
 .PHONY: all clean dependents

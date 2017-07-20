@@ -19,8 +19,7 @@ import argparse
 import socket
 import sys
 import threading
-import datetime as dt
-from time import sleep
+from time import sleep, time
 from distutils.version import StrictVersion
 
 
@@ -50,9 +49,10 @@ class KeyPressThread (threading.Thread):
 
 
 class PyAudioThread (threading.Thread):
-    def __init__(self, input_format):
+    def __init__(self, input_samples, input_format):
         threading.Thread.__init__(self)
         self.input_format = input_format
+        self.input_samples = input_samples
 
     def run(self):
         # create pyaudio object
@@ -84,6 +84,7 @@ class PyAudioThread (threading.Thread):
                          channels=1,
                          format=self.input_format,
                          input=True,
+                         frames_per_buffer=self.input_samples,
                          stream_callback=PyAudioThread.input_callback)
 
         stream.start_stream()
@@ -145,6 +146,7 @@ def visualizer(data_in):
         sys.stdout.write('|')
     for i in range(value, hi_limit, 1):
         sys.stdout.write(' ')
+    sys.stdout.write('\n')
 
     # flush output
     sys.stdout.flush()
@@ -154,7 +156,7 @@ def check_min_versions():
     ret = True
 
     # pyaudio
-    vers_required = "0.2.10"
+    vers_required = "0.2.7"
     vers_current = pyaudio.__version__
     if StrictVersion(vers_current) < StrictVersion(vers_required):
         print "Error: minimum pyaudio vers: {}, current vers {}".format(vers_required, vers_current)
@@ -183,8 +185,9 @@ def get_output_fft_bins(fft_mag, n_out):
     fft_out = np.zeros(n_out)
     n_filled = 0
     i = 0
-    while n_filled < n_out: #for i in range(0, n_in, step_size):
+    while n_filled < n_out:
         acc = np.sum(fft_mag[i:min(i+step_size, n_in)])
+        acc /= step_size
         i += step_size
         # saturate to 8-bit unsigned
         if acc > 255:
@@ -195,11 +198,8 @@ def get_output_fft_bins(fft_mag, n_out):
 
 
 def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visual):
-    # length of data_np after conversion is 1024
-    # length of data processing unit is set to 256
-    data_len = 256
+    # length is len(data_in)/4
     data_np = np.fromstring(data_in, 'Float32')
-    data_np = data_np[0: data_len]
 
     # visualizer
     if is_visual:
@@ -209,7 +209,7 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
     if is_energy:
         energy = np.abs(data_np) ** 2
         energy = energy.sum()
-        energy *= 2**6
+        energy *= 2**5
         energy_output = energy.astype(np.uint16)
     else:
         energy_output = np.zeros(2).astype(np.uint16)
@@ -230,7 +230,6 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
                                 center=False)
 
         fft_data_mag = np.abs(fft_data[0:n_fft/2]) ** 2
-        # fft_data_mag = fft_data_mag[:, 0]
 
         # magnitude scaling
         fft_data_mag *= 2**3
@@ -245,10 +244,11 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
 if __name__ == '__main__':
 
     # parameters
+    input_samples = 2**11
     input_format = pyaudio.paFloat32
     min_delay = 50
 
-    n_fft = 64
+    n_fft = 512
 
     udp_host = "127.0.0.1"
     udp_port = 27182
@@ -285,17 +285,15 @@ if __name__ == '__main__':
     is_fft = int(tokens[0])
     n_bins_out = int(tokens[1])
     is_energy = int(tokens[2])
-    print "Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy)
+    # print "Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy)
 
     # start pyaudio thread
-    pa_thread = PyAudioThread(input_format)
+    pa_thread = PyAudioThread(input_samples, input_format)
     pa_thread.start()
     sleep(1)
 
     # open new udp socket to send
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    t_start = dt.datetime.now()
 
     # main loop
     data = []
@@ -311,8 +309,11 @@ if __name__ == '__main__':
     kp_thread = KeyPressThread()
     kp_thread.start()
 
-    while True:
+    # start timer
+    startTime = time()
 
+    # main processing loop
+    while True:
         pyaudio_lock.acquire()
         data_updated = data_buffer_updated
         data = data_buffer
@@ -321,7 +322,6 @@ if __name__ == '__main__':
 
         # process and send music data
         if data_updated:
-
             (fft, energy) = process_music_data(data,
                                                is_fft,
                                                is_energy,
@@ -329,21 +329,20 @@ if __name__ == '__main__':
                                                n_fft,
                                                visualize)
 
-            t_end = dt.datetime.now()
-            t_processing = (t_end - t_start).microseconds / 1e3
-            t_sleep = min_delay - t_processing
-
-            # print 'sleep for {:.2f} ms'.format(t_sleep)
-            if t_sleep > 0.0:
-                sleep(t_sleep/1e3)
-
-            t_start = dt.datetime.now()
+            stopTime = time()
+            elapsedTime = (stopTime - startTime) * 1000
+            sleepTime = min_delay - elapsedTime
+            # print 'buffer + process time {:.2f} ms, sleep for {:.2f} ms'.format(elapsedTime, sleepTime)
+            if sleepTime > 0.0:
+                sleep(sleepTime/1e3)
 
             # message to simulator
             message = fft.tobytes() + energy.tobytes()
             # print "fft {} energy {}".format(fft, energy)
             
             udp_socket.sendto(message, (udp_host, udp_port))
+
+            startTime = time()
 
         # check for key press to quit loop
         keypress_lock.acquire()
@@ -360,6 +359,4 @@ if __name__ == '__main__':
 
     # stop keypress thread
     kp_thread.join()
-
-
 
