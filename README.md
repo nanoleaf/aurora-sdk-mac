@@ -92,14 +92,15 @@ The music_processor python script must be run first, by entering:
 
 `python music_processor.py`
 
+Note that music_processor should be run **outside** of Cygwin on Windows, e.g., in a command window.
+
 Next, to run the simulator, enter:
 
 `./SoundModuleSimulator -p <absolute path to .so file> -i <ip address>`
 
-If you generated a color palette (please see Plugin-builder-tool), enter:
+If you generated a color palette (see Plugin Builder), enter:
 
 `./SoundModuleSimulator -p <absolute path to .so file> -i <ip address> -cp <absolute path to palette file>`
-
 
 The *.so* file is the compiled plugin that you wish to run on the Aurora. 
 
@@ -107,23 +108,13 @@ The IP address that you enter is the ip address of the Aurora on the local netwo
 
 When using the simulator for the first time, the simulator will attempt to acquire an authentication token from the Aurora and ask the user to hold down the power button on the Aurora for 5-7 seconds. This step is not required during subsequent executions of the simulator. Note: the Simulator will only maintain authentication with one Aurora at a time.
 
-## Plugin-builder-tool
-The plugin builder tool was added to ease the process of using the sdk. Inside the plugin-builder-tool directory run the tool by entering:
+## Plugin Builder
+A plugin builder tool can be used to simplify the process of:
 
-`python main.py`
+* _Pairing with an Aurora_
+* _Creating a palette_
+* _Building and running plugins **(Mac and Linux only)**_
 
+In the directory plugin-builder-tool/ simply run the command: `python main.py`. A GUI will appear that prompts you to enter the ip address of the testing Aurora, your desired palette, and the absolute path to your plugin in the directory AuroraPluginTemplate/.
 
-A GUI will show up that will prompt you for the IP Address, color palette and the path to the plugin. The color palette will be generated under AuroraPluginTemplate.
-Please provide path up to:
-
-`<Path>/AuroraPluginTemplate/`
-
-
-Windows:
-
-The generate button will create a color palette in the directory specified.
-
-
-Linux and Mac: 
-
-The buttons will build the plugin, run music\_processor and SoundModuleSimulator with the flags. Note: the output of music\_processor and SoundModuleSimulator will be streamed to the terminal that you ran the plugin builder tool. Also, when pairing, please see the output of the terminal for instructions.
+Note that the Plugin Builder tool will output information to the terminal. Please check the terminal output for instructions, e.g., during pairing with Aurora or debug printouts from your plugin.
