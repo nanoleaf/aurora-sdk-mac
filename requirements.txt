@@ -1,0 +1,13 @@
+audioread>=2.1.4
+Cython>=0.25
+decorator>=4.0.11
+future>=0.16.0
+joblib>=0.11
+numpy>=1.12.1
+librosa>=0.5.0
+PyAudio>=0.2.11
+pyparsing>=2.2.0
+resampy>=0.1.5
+scikit-learn>=0.18.1
+scipy>=0.19
+six>=1.10.0

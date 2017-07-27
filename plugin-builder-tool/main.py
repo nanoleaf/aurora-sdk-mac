@@ -27,6 +27,7 @@ class MainGUI:
 
         self.palette = []
         self.palette_entered = False
+        self.is_windows = False
         self.saved_auth = ""
         self.curr_palette_string.set("")
         self.sound_module = soundModuleSimulatorWrapper.SoundModuleSimulatorWrapper(self)
@@ -42,6 +43,7 @@ class MainGUI:
         elif ("win" in operating_system):
             iprint("Detected windows system")
             self.directory_divider = "\\"
+            self.is_windows = True
 
     def load_palette_from_file(self):
         iprint("reading in palette from file")
@@ -178,15 +180,19 @@ class MainGUI:
         ttk.Label(self.mainframe, textvariable=self.curr_palette_string, wraplength=500).grid(column=2, row=4, columnspan=2, sticky=(N, W))
         ttk.Button(self.mainframe, width=12, text="Clear palette", command=self.clear_palette).grid(column=4, row=4, sticky=(N, W))
 
-        ttk.Label(self.mainframe, text='3. Build your plugin').grid(column=1, row=5, sticky=(N, W))
+        if (not self.is_windows):
+            ttk.Label(self.mainframe, text='3. Build your plugin').grid(column=1, row=5, sticky=(N, W))
+        else:
+            ttk.Button(self.mainframe, width=18, text="Generate Palette", command=self.write_palette_for_sdk).grid(column=1, row=5, sticky=(N, W))
 
         ttk.Label(self.mainframe, text='Plugin Location').grid(column=1, row=6, sticky=(N, W))
         ttk.Entry(self.mainframe, width=35, textvariable=self.plugin_dir_path).grid(column=2, row=6, columnspan=2, sticky=(N, W))
         ttk.Button(self.mainframe, width=12, text='Browse', command=self.get_plugin_dir).grid(column=4, row=6, sticky=(N, W))
 
-        ttk.Button(self.mainframe, text='Build', command=self.build_plugin).grid(column=2, row=7, columnspan=1, sticky=(N,E))
-        ttk.Button(self.mainframe, text='Upload & Run', command=self.play_plugin).grid(column=3, row=7, columnspan=1, sticky=N)
-        ttk.Button(self.mainframe, width=12, text='Stop Plugin', command=self.stop_plugin).grid(column=4, row=7, columnspan=1, sticky=(N, W))
+        if (not self.is_windows):
+            ttk.Button(self.mainframe, text='Build', command=self.build_plugin).grid(column=2, row=7, columnspan=1, sticky=(N,E))
+            ttk.Button(self.mainframe, text='Upload & Run', command=self.play_plugin).grid(column=3, row=7, columnspan=1, sticky=N)
+            ttk.Button(self.mainframe, width=12, text='Stop Plugin', command=self.stop_plugin).grid(column=4, row=7, columnspan=1, sticky=(N, W))
 
         ttk.Label(self.mainframe, text="             ").grid(column=5, row=8, sticky=(N,W))
         ttk.Label(self.mainframe, text="             ").grid(column=5, row=9, sticky=(N,W))
@@ -196,7 +202,14 @@ class MainGUI:
     def write_palette_for_sdk(self):
         iprint("writing out palette to file")
         self.palette_path.set(self.plugin_dir_path.get() + self.directory_divider + "palette")
-        open_file = open(self.plugin_dir_path.get() + self.directory_divider + "palette", "w+")
+        if self.plugin_dir_path.get() == "":
+            tkMessageBox.showerror("Error", "Please enter the path to the plugin")
+            return;
+        try:
+            open_file = open(self.plugin_dir_path.get() + self.directory_divider + "palette", "w+")
+        except IOError, errinfo:
+            tkMessageBox.showerror("Error", "Could not write to directory." + str(errinfo))
+            return
         palette_dict = self.palette
         try:
             palette_dict["palette"]

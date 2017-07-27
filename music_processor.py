@@ -21,6 +21,7 @@ import sys
 import threading
 from time import sleep, time
 from distutils.version import StrictVersion
+from builtins import input
 
 
 pyaudio_lock = threading.Lock()
@@ -39,7 +40,7 @@ class KeyPressThread (threading.Thread):
     def run(self):
         global stop_loop
         while True:
-            key = raw_input("enter q to quit\n>>> ")
+            key = input("enter q to quit\n>>> ")
             if key == "q":
                 keypress_lock.acquire()
                 stop_loop = True
@@ -72,8 +73,8 @@ class PyAudioThread (threading.Thread):
         default_high_input_latency = default_input_device_info['defaultHighInputLatency']   # float
         default_max_input_channels = default_input_device_info['maxInputChannels']          # integer
 
-        print "default inputs: sample rate {}, latency low {:.4f}, latency high {:.4f}, channels {}".\
-            format(default_input_sample_rate, default_low_input_latency, default_high_input_latency, default_max_input_channels)
+        print("default inputs: sample rate {}, latency low {:.4f}, latency high {:.4f}, channels {}".\
+            format(default_input_sample_rate, default_low_input_latency, default_high_input_latency, default_max_input_channels))
 
         global sample_rate
         pyaudio_lock.acquire()
@@ -124,7 +125,7 @@ def update_magnitude_scaling(mag, scalar, min_scalar):
     if scalar < min_scalar:
         updated_scalar = min_scalar
 
-    # print "{} ({})".format(updated_scalar, max_mag)
+    # print("{} ({})".format(updated_scalar, max_mag))
     return updated_scalar
 
 
@@ -141,7 +142,7 @@ def visualizer(data_in):
     # back to front of row
     sys.stdout.write('\r')
 
-    # print | followed by spaces
+    # write "|" followed by spaces
     for i in range(0, value, 1):
         sys.stdout.write('|')
     for i in range(value, hi_limit, 1):
@@ -159,21 +160,21 @@ def check_min_versions():
     vers_required = "0.2.7"
     vers_current = pyaudio.__version__
     if StrictVersion(vers_current) < StrictVersion(vers_required):
-        print "Error: minimum pyaudio vers: {}, current vers {}".format(vers_required, vers_current)
+        print("Error: minimum pyaudio vers: {}, current vers {}".format(vers_required, vers_current))
         ret = False
 
     # librosa
     vers_required = "0.4.3"
     vers_current = librosa.__version__
     if StrictVersion(vers_current) < StrictVersion(vers_required):
-        print "Error: minimum librosa vers: {}, current vers {}".format(vers_required, vers_current)
+        print("Error: minimum librosa vers: {}, current vers {}".format(vers_required, vers_current))
         ret = False
 
     # numpy
     vers_required = "1.9.0"
     vers_current = np.__version__
     if StrictVersion(vers_current) < StrictVersion(vers_required):
-        print "Error: minimum numpy vers: {}, current vers {}".format(vers_required, vers_current)
+        print("Error: minimum numpy vers: {}, current vers {}".format(vers_required, vers_current))
         ret = False
 
     return ret
@@ -187,7 +188,6 @@ def get_output_fft_bins(fft_mag, n_out):
     i = 0
     while n_filled < n_out:
         acc = np.sum(fft_mag[i:min(i+step_size, n_in)])
-        acc /= step_size
         i += step_size
         # saturate to 8-bit unsigned
         if acc > 255:
@@ -229,7 +229,7 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
                                 hop_length=n_fft,
                                 center=False)
 
-        fft_data_mag = np.abs(fft_data[0:n_fft/2]) ** 2
+        fft_data_mag = np.abs(fft_data[0:n_fft//2]) ** 2
 
         # magnitude scaling
         fft_data_mag *= 2**3
@@ -256,7 +256,7 @@ if __name__ == '__main__':
 
     # check minimum versions of imported modules
     if not check_min_versions():
-        print "Minimum version not satisfied, please upgrade your modules as indicated!"
+        print("Minimum version not satisfied, please upgrade your modules as indicated!")
         exit(1)
 
     # parse command arguments
@@ -270,13 +270,13 @@ if __name__ == '__main__':
     udp_socket.bind((udp_host, sound_feature_udp_port))
 
     # prompt user to start plugin
-    print "Music processor initialized... please run your plugin to continue or ctrl+c to exit"
+    print("Music processor initialized... please run your plugin to continue or ctrl+c to exit")
 
     # receive sound feature
     packet, addr = udp_socket.recvfrom(20)  # blocking, ctrl+c to exit
     from_host = addr[0]
     udp_socket.close()
-    print "Plugin detected... continuing"
+    print("Plugin detected... continuing")
 
     # packet contains: [b i b] where b is boolean, i is integer
     if from_host == udp_host:
@@ -285,7 +285,7 @@ if __name__ == '__main__':
     is_fft = int(tokens[0])
     n_bins_out = int(tokens[1])
     is_energy = int(tokens[2])
-    # print "Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy)
+    # print("Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy))
 
     # start pyaudio thread
     pa_thread = PyAudioThread(input_samples, input_format)
@@ -299,11 +299,11 @@ if __name__ == '__main__':
     data = []
     data_updated = False
     stop = False
-    print "Music processor active!"
+    print("Music processor active!")
     if visualize:
-        print "Visualize on: try a loud clap and a simple sound bar should appear"
+        print("Visualize on: try a loud clap and a simple sound bar should appear")
     else:
-        print "If nothing seems to be happening, try running with --viz"
+        print("If nothing seems to be happening, try running with --viz")
 
     # start key press thread
     kp_thread = KeyPressThread()
@@ -332,13 +332,13 @@ if __name__ == '__main__':
             stopTime = time()
             elapsedTime = (stopTime - startTime) * 1000
             sleepTime = min_delay - elapsedTime
-            # print 'buffer + process time {:.2f} ms, sleep for {:.2f} ms'.format(elapsedTime, sleepTime)
+            # print('buffer + process time {:.2f} ms, sleep for {:.2f} ms'.format(elapsedTime, sleepTime))
             if sleepTime > 0.0:
                 sleep(sleepTime/1e3)
 
             # message to simulator
             message = fft.tobytes() + energy.tobytes()
-            # print "fft {} energy {}".format(fft, energy)
+            # print("fft {} energy {}".format(fft, energy))
             
             udp_socket.sendto(message, (udp_host, udp_port))
 
@@ -350,7 +350,7 @@ if __name__ == '__main__':
         keypress_lock.release()
 
         if stop:
-            print "Stopping music processor!"
+            print("Stopping music processor!")
             break
 
     # stop pyaudio thread
