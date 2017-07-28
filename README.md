@@ -30,6 +30,12 @@ Install remaining packages:
 
 `pip install -r requirements.txt`
 
+If you encounter a `'portaudio.h' file not found` error, try: 
+
+`pip install --global-option='build_ext' --global-option='-I/usr/local/include' --global-option='-L/usr/local/lib' pyaudio'` 
+
+then repeat the previous step.
+
 To deactivate the virtual environment:
 
 `deactivate`
@@ -51,7 +57,7 @@ Once the compilation completes successfully, a **libAuroraPlugin.so** file will 
 Before running the simulator, a symbolic link will have to be made in `/usr/local/lib` to the libPluginUtilities.so file that is stored in the utilities folder of the AuroraPlugin directory.
 To make this link, type the following into terminal.
 
-`ln -s <Path>/Utilities/libPluginUtilties.so /usr/local/lib/libPluginUtilities.so`
+`ln -s <Path>/Utilities/libPluginUtilities.so /usr/local/lib/libPluginUtilities.so`
 
 where _Path_ is the absolute path to the Aurora Plugin directory on your computer.
 
