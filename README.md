@@ -32,7 +32,7 @@ Install remaining packages:
 
 If you encounter a `'portaudio.h' file not found` error, try: 
 
-`pip install --global-option='build_ext' --global-option='-I/usr/local/include' --global-option='-L/usr/local/lib' pyaudio'` 
+`pip install --global-option='build_ext' --global-option='-I/usr/local/include' --global-option='-L/usr/local/lib' pyaudio` 
 
 then repeat the previous step.
 
