@@ -1,17 +1,27 @@
+try:
+    # Python 2.7
+    import tkMessageBox
+except ImportError:
+    # Python 3
+    from tkinter import messagebox as tkMessageBox
 import os
 import subprocess
-import tkMessageBox
 import glob
 
 version_marker = "4538474992"
 
 def check_if_sdk_file_built(plugin_dir):
+    upper_dir = os.path.dirname(os.path.realpath(__file__)) + "/../"
     makefile_dir = plugin_dir + "/Debug/"
     os.chdir(makefile_dir)
     lib_name = ""
     for filename in glob.glob("*.so"):
         lib_name = filename
         break
+    if not lib_name:
+        os.chdir(upper_dir)
+        return False
+    os.chdir(upper_dir)
     lib_path = makefile_dir + lib_name
     return os.path.exists(lib_path)
 
@@ -20,14 +30,14 @@ def sdk_compile(plugin_dir):
     print(makefile_dir)
     make_clean_process = subprocess.Popen(["make", "clean"], cwd=makefile_dir, stdout=subprocess.PIPE)
     while True:
-        line = make_clean_process.stdout.readline()
+        line = make_clean_process.stdout.readline().decode()
         if line != "":
             print (line)
         else:
             break
     make_all_process = subprocess.Popen(["make", "all"], cwd=makefile_dir, stdout=subprocess.PIPE)
     while True:
-        line = make_all_process.stdout.readline()
+        line = make_all_process.stdout.readline().decode()
         if line != "":
             print (line)
         else:

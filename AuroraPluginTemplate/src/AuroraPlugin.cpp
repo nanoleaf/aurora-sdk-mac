@@ -17,11 +17,14 @@
 
 
 #include "AuroraPlugin.h"
+
+#include "../inc/PluginFeatures.h"
 #include "LayoutProcessingUtils.h"
 #include "ColorUtils.h"
 #include "DataManager.h"
-#include "PluginFeatures.h"
 #include "Logger.h"
+#include "PluginOptionsManager.h"
+// #include "PluginOptions.h"  /**< uncomment for Plugin Options */
 
 #ifdef __cplusplus
 extern "C" {

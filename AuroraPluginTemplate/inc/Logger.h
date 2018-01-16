@@ -8,7 +8,9 @@
 #ifndef INC_LOGGER_H_
 #define INC_LOGGER_H_
 
-#define LOGGING_ENABLED
+#include <stdio.h>
+
+//#define LOGGING_ENABLED
 
 #ifdef LOGGING_ENABLED
 #define PRINTLOG(format, ...) printf(format,  ##__VA_ARGS__)

@@ -1,39 +1,72 @@
 from printer import *
-from Tkinter import *
+try:
+    # Python 2.7
+    from Tkinter import *
+    import ttk
+    import tkMessageBox
+    import tkFileDialog
+    import tkColorChooser
+except ImportError:
+    # Python 3
+    from tkinter import *
+    from tkinter import ttk
+    from tkinter import messagebox as tkMessageBox
+    from tkinter import filedialog as tkFileDialog
+    from tkinter import colorchooser as tkColorChooser
 import AuroraAPI
 import time
-import soundModuleSimulatorWrapper
-import ttk
-import tkFileDialog
+import AnimationProcessorWrapper
 import SdkCompile
-import tkMessageBox
 import json
-import tkColorChooser
 import colorsys
 import os
 import sys
+import subprocess
+from PluginOptions import PluginOptionsGUI
 
+# to make sure input works on both python 2.x and 3.x
+try:
+    input = raw_input
+except NameError:
+    pass
+    
 class MainGUI:
-
     def __init__(self):
         self.root = Tk()
         self.root.title("Plugin Builder")
+        self.root.minsize(width=0, height=260)
+        self.root.maxsize(width=1200, height=260)
+        self.root.resizable(width=False, height=False)
         self.mainframe = ttk.Frame(self.root)
+        # Known issue with MacOS TCL where the background color of ttk is not defined and different from the Tkinter background color
+        operating_sys = sys.platform
+        if operating_sys == "darwin":
+            self.root.configure(background="#E4E4E4")
         self.plugin_dir_path = StringVar()
+        self.plugin_dir_path.trace("w", lambda name, index, mode, var=self.plugin_dir_path:self.plugin_path_updated(var))
+        self.src_dir = os.path.dirname(os.path.realpath(__file__));
         self.palette_path = StringVar()
         self.ip_addr = StringVar()
         self.curr_palette_string = StringVar()
         self.directory_divider = "/"
+        self.should_use_simulator = IntVar()
+        self.sim_proc = None
 
         self.palette = []
         self.palette_entered = False
-        self.is_windows = False
         self.saved_auth = ""
         self.curr_palette_string.set("")
-        self.sound_module = soundModuleSimulatorWrapper.SoundModuleSimulatorWrapper(self)
+        self.sound_module = AnimationProcessorWrapper.AnimationProcessorWrapper(self)
         self.load_palette_from_file()
+        self.auth_dir = self.get_auth_dir()
         self.get_auth()
         self.get_os_dir()
+
+        self.pluginOptionsGUI = PluginOptionsGUI(self.root)
+        self.pluginOptionsGUI.set_plugin_dir(self.src_dir + "/../AuroraPluginTemplate")
+
+    def plugin_path_updated(self, path):
+        self.pluginOptionsGUI.update_plugin_dir(path.get())
 
     def get_os_dir(self):
         operating_system = sys.platform
@@ -43,7 +76,6 @@ class MainGUI:
         elif ("win" in operating_system):
             iprint("Detected windows system")
             self.directory_divider = "\\"
-            self.is_windows = True
 
     def load_palette_from_file(self):
         iprint("reading in palette from file")
@@ -74,24 +106,42 @@ class MainGUI:
         SdkCompile.sdk_compile(self.plugin_dir_path.get())
         dprint("palette", self.palette)
         self.write_palette_for_sdk()
+        if self.pluginOptionsGUI.has_plugin_options():
+            self.pluginOptionsGUI.generate_plugin_options_header(False)
 
     def play_plugin(self):
         if self.plugin_dir_path.get() == "":
             tkMessageBox.showerror("Error", "No plugin to play")
             return
-        if self.ip_addr.get() == "":
+        if self.ip_addr.get() == "" and self.should_use_simulator.get() == 0:
             tkMessageBox.showerror("Error", "No IP Address")
             return
-
-        while (not self.test_auth()):
-            self.authenticate_with_aurora()
-        time.sleep(0.5)
+        if self.pluginOptionsGUI.has_plugin_options():
+            if self.pluginOptionsGUI.generate_plugin_options_header(False) == -1:
+                return
+        if (self.should_use_simulator.get() == 1):
+            if self.sim_proc == None:
+                path = ""
+                if sys.version_info < (3, 0):
+                    path = "../LightPanelsSimulator/py27/light-panels-simulator.py"
+                elif sys.version_info >= (3, 4):
+                    path = "../LightPanelsSimulator/py3/light-panels-simulator.py"
+                elif sys.version_info >= (3, 0) and sys.version_info < (3, 4):
+                    print("Requires Python 2.7 or Python 3.4+")
+                iprint("launching simulator")
+                command = ["python", path]
+                self.sim_proc = subprocess.Popen(command, cwd=self.src_dir, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+        else:
+            while (not self.test_auth()):
+                self.authenticate_with_aurora()
+            time.sleep(0.5)
 
         iprint("Playing plugin")
         self.sound_module.run_music_processor()
         time.sleep(1)
         iprint("Playing music processor")
-        self.sound_module.run_thread(self.ip_addr.get(), self.plugin_dir_path.get(), self.palette_path.get(), self.palette_entered)
+        use_plugin_options = self.pluginOptionsGUI.has_plugin_options()
+        self.sound_module.run_thread(self.ip_addr.get(), self.plugin_dir_path.get(), self.palette_path.get(), self.palette_entered, self.should_use_simulator.get(), use_plugin_options)
 
     def stop_plugin(self):
         iprint("Stopping plugin")
@@ -99,6 +149,11 @@ class MainGUI:
         time.sleep(1)
         iprint("Stopping music processor")
         self.sound_module.stop_music_proc()
+        if self.sim_proc != None:
+            if self.sim_proc.poll() == None:
+                iprint("killing aurora simulator")
+                self.sim_proc.kill()
+            self.sim_proc = None
 
     def add_color_to_palette(self):
         if (self.curr_palette_string.get() == ""):
@@ -128,18 +183,22 @@ class MainGUI:
     def authenticate_with_aurora(self):
         if (self.test_auth()):
             iprint("Already Paired")
-        raw_input("Press the power button on the controller for 5 to 7 seconds. Then press enter.")
-        AuroraAPI.setIPAddr(self.ip_addr.get())
-        status, auth_token = AuroraAPI.request_token()
-        iprint("Authenticating with aurora, got auth token: " + str(auth_token))
-        self.save_auth(auth_token)
+        else:
+            input("Press the power button on the controller for 5 to 7 seconds. Then press enter.")
+            AuroraAPI.setIPAddr(self.ip_addr.get())
+            status, auth_token = AuroraAPI.request_token()
+            iprint("Authenticating with aurora, got auth token: " + str(auth_token))
+            self.save_auth(auth_token)
 
+    def get_auth_dir(self):
+        cwd = self.src_dir.split(self.directory_divider)
+        cwd = cwd[:len(cwd) - 1]
+        path = self.directory_divider.join(cwd) + self.directory_divider + "auth_tokens"
+        return path
+        
     def get_auth(self):
         try:
-            cwd = os.path.dirname(os.path.realpath(__file__)).split(self.directory_divider)
-            cwd = cwd[:len(cwd) - 1]
-            path = self.directory_divider.join(cwd) + self.directory_divider + "auth_tokens"
-            open_file = open(path, 'r')
+            open_file = open(self.auth_dir, 'r')
             auth_token = open_file.read()
             iprint("Found auth token: " + str(auth_token))
             self.saved_auth = auth_token
@@ -149,18 +208,22 @@ class MainGUI:
 
     def save_auth(self,auth_token):
         self.saved_auth = auth_token
-        cwd = os.path.dirname(os.path.realpath(__file__)).split(self.directory_divider)
-        cwd = cwd[:len(cwd) - 1]
-        path = self.directory_divider.join(cwd) + self.directory_divider + "auth_tokens"
-
-        open_file = open(path, 'w')
+        open_file = open(self.auth_dir, 'w')
         open_file.write(auth_token)
         open_file.close()
-        iprint("Saved new auth token: " + str(auth_token) + " at: " + str(path))
+        iprint("Saved new auth token: " + str(auth_token) + " at: " + str(self.auth_dir))
 
     def clear_palette(self):
         self.palette = []
         self.curr_palette_string.set('')
+
+    def toggle_aurora_simulator(self):
+        if (self.should_use_simulator.get() == 1):
+            self.pair_button.state(["disabled"])
+            self.pair_entry.state(["disabled"])
+        else:
+            self.pair_button.state(["!disabled"])
+            self.pair_entry.state(["!disabled"])
 
     def show_window(self):
         self.mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
@@ -168,11 +231,14 @@ class MainGUI:
         self.mainframe.rowconfigure(0, weight=1)
 
         ttk.Label(self.mainframe, text="             ").grid(column=0, row=0, sticky=(N,W))
-        ttk.Label(self.mainframe, text='1. Pair your Aurora').grid(column=1, row=1, sticky=(N, W))
+        ttk.Label(self.mainframe, text='1. Pair your Light Panels   ').grid(column=1, row=1, sticky=(N, W))
+        ttk.Checkbutton(self.mainframe, variable=self.should_use_simulator, text='Use Light Panels Simulator', command=self.toggle_aurora_simulator).grid(column=2, row=1, sticky=(N,W))
 
         ttk.Label(self.mainframe, text='IP Address').grid(column=1, row=2, sticky=(N, W))
-        ttk.Entry(self.mainframe, width=35, textvariable=self.ip_addr).grid(column=2, row=2, columnspan=2, sticky=(N, W))
-        ttk.Button(self.mainframe, width=12, text='Pair', command=self.authenticate_with_aurora).grid(column=4, row=2, sticky=(N,W))
+        self.pair_entry = ttk.Entry(self.mainframe, width=35, textvariable=self.ip_addr)
+        self.pair_entry.grid(column=2, row=2, columnspan=2, sticky=(N, W))
+        self.pair_button = ttk.Button(self.mainframe, width=12, text='Pair', command=self.authenticate_with_aurora)
+        self.pair_button.grid(column=4, row=2, sticky=(N,W))
 
         ttk.Label(self.mainframe, text='2. Make a color palette').grid(column=1, row=3, sticky=(N, W))
 
@@ -180,22 +246,20 @@ class MainGUI:
         ttk.Label(self.mainframe, textvariable=self.curr_palette_string, wraplength=500).grid(column=2, row=4, columnspan=2, sticky=(N, W))
         ttk.Button(self.mainframe, width=12, text="Clear palette", command=self.clear_palette).grid(column=4, row=4, sticky=(N, W))
 
-        if (not self.is_windows):
-            ttk.Label(self.mainframe, text='3. Build your plugin').grid(column=1, row=5, sticky=(N, W))
-        else:
-            ttk.Button(self.mainframe, width=18, text="Generate Palette", command=self.write_palette_for_sdk).grid(column=1, row=5, sticky=(N, W))
-
+        ttk.Label(self.mainframe, text='3. Build your plugin').grid(column=1, row=5, sticky=(N, W))
+        
         ttk.Label(self.mainframe, text='Plugin Location').grid(column=1, row=6, sticky=(N, W))
         ttk.Entry(self.mainframe, width=35, textvariable=self.plugin_dir_path).grid(column=2, row=6, columnspan=2, sticky=(N, W))
         ttk.Button(self.mainframe, width=12, text='Browse', command=self.get_plugin_dir).grid(column=4, row=6, sticky=(N, W))
-
-        if (not self.is_windows):
-            ttk.Button(self.mainframe, text='Build', command=self.build_plugin).grid(column=2, row=7, columnspan=1, sticky=(N,E))
-            ttk.Button(self.mainframe, text='Upload & Run', command=self.play_plugin).grid(column=3, row=7, columnspan=1, sticky=N)
-            ttk.Button(self.mainframe, width=12, text='Stop Plugin', command=self.stop_plugin).grid(column=4, row=7, columnspan=1, sticky=(N, W))
+    
+        ttk.Button(self.mainframe, text='Build', command=self.build_plugin).grid(column=2, row=7, columnspan=1, sticky=(N,E))
+        ttk.Button(self.mainframe, text='Upload & Run', command=self.play_plugin).grid(column=3, row=7, columnspan=1, sticky=N)
+        ttk.Button(self.mainframe, width=12, text='Stop Plugin', command=self.stop_plugin).grid(column=4, row=7, columnspan=1, sticky=(N, W))
 
         ttk.Label(self.mainframe, text="             ").grid(column=5, row=8, sticky=(N,W))
         ttk.Label(self.mainframe, text="             ").grid(column=5, row=9, sticky=(N,W))
+
+        self.pluginOptionsGUI.create_plugin_frame()
 
         self.root.mainloop()
 
@@ -207,7 +271,7 @@ class MainGUI:
             return;
         try:
             open_file = open(self.plugin_dir_path.get() + self.directory_divider + "palette", "w+")
-        except IOError, errinfo:
+        except IOError as errinfo:
             tkMessageBox.showerror("Error", "Could not write to directory." + str(errinfo))
             return
         palette_dict = self.palette

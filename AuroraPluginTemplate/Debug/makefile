@@ -46,7 +46,7 @@ all: libAuroraPlugin.so
 libAuroraPlugin.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	g++ -L../Utilities -u _passLayoutData -u _passColorPalette -u _dataManagerCleanup -u _getEnabledFeatures -u _initRhythmFeatures -u _updateRhythmFeatures -u _deinitRhythmFeatures -u _initBeatFeatures -u _updateBeatFeatures -u _deinitBeatFeatures -shared -o "libAuroraPlugin.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -L../Utilities -u _passLayoutData -u _passColorPalette -u _dataManagerCleanup -u _getEnabledFeatures -u _initRhythmFeatures -u _updateRhythmFeatures -u _deinitRhythmFeatures -u _initBeatFeatures -u _updateBeatFeatures -u _deinitBeatFeatures -u _passPluginOptions -shared -o "libAuroraPlugin.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

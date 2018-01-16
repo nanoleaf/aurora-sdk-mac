@@ -19,10 +19,12 @@ void enableEnergy(void);
 void enableFft(uint16_t nFftBins);
 void enableDistance(void);
 void enableSpeed(void);			// get motion speed in m/s
+void enableMel(void);
 uint16_t getEnergy(void);
 uint8_t *getFftBins(void);
 uint8_t getDistance(void);
 uint8_t getSpeed(void);
+uint8_t *getMelBins(void);
 
 /* ----------------------------------
  * BEAT FEATURE FUNCTIONS

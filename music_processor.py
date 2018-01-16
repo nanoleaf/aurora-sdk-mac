@@ -197,7 +197,7 @@ def get_output_fft_bins(fft_mag, n_out):
     return fft_out[0:n_out]
 
 
-def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visual):
+def process_music_data(data_in, is_fft, is_mel, n_out_bins, n_fft, n_mel, is_energy, is_visual):
     # length is len(data_in)/4
     data_np = np.fromstring(data_in, 'Float32')
 
@@ -214,8 +214,8 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
     else:
         energy_output = np.zeros(2).astype(np.uint16)
 
-    # fft
-    if is_fft:
+    # fft or mel
+    if is_fft or is_mel:
         global sample_rate
 
         # down-sample by 4, with filtering, energy not scaled
@@ -229,14 +229,22 @@ def process_music_data(data_in, is_fft, is_energy, n_output_bins, n_fft, is_visu
                                 hop_length=n_fft,
                                 center=False)
 
-        fft_data_mag = np.abs(fft_data[0:n_fft//2]) ** 2
+        # calculate FFT or Mel
+        if is_fft:
+            fft_data_mag = np.abs(fft_data[0:n_fft // 2]) ** 2
+            fft_data_mag *= 2**3
+            fft_output = get_output_fft_bins(fft_data_mag, n_out_bins)
+        else:
+            fft_data_mag = np.abs(fft_data)**2
+            fft_data_mag *= 2**2
+            mel_data = librosa.feature.melspectrogram(S=fft_data_mag, sr=sample_rate / 4, n_mels=n_mel)
+            fft_output = get_output_fft_bins(mel_data, n_out_bins)
 
-        # magnitude scaling
-        fft_data_mag *= 2**3
-        fft_output = get_output_fft_bins(fft_data_mag, n_output_bins)
+        # output uint8_t
         fft_output = fft_output.astype(np.uint8)
+
     else:
-        fft_output = np.zeros(n_output_bins).astype(np.uint8)
+        fft_output = np.zeros(n_out_bins).astype(np.uint8)
 
     return fft_output, energy_output
 
@@ -249,6 +257,7 @@ if __name__ == '__main__':
     min_delay = 50
 
     n_fft = 512
+    n_mel = 26  # fixed, same as in Aurora
 
     udp_host = "127.0.0.1"
     udp_port = 27182
@@ -285,7 +294,11 @@ if __name__ == '__main__':
     is_fft = int(tokens[0])
     n_bins_out = int(tokens[1])
     is_energy = int(tokens[2])
-    # print("Sound features requested: fft {} fft bins {} energy {}".format(is_fft, n_bins_out, is_energy))
+    is_mel = int(tokens[3])     # either is_fft or is_mel, cannot be both
+    if is_mel:
+        n_bins_out = n_mel
+        is_fft = False
+    # print("Sound features requested: fft {} mel {} bins out {} energy {}".format(is_fft, is_mel, n_bins_out, is_energy))
 
     # start pyaudio thread
     pa_thread = PyAudioThread(input_samples, input_format)
@@ -324,9 +337,11 @@ if __name__ == '__main__':
         if data_updated:
             (fft, energy) = process_music_data(data,
                                                is_fft,
-                                               is_energy,
+                                               is_mel,
                                                n_bins_out,
                                                n_fft,
+                                               n_mel,
+                                               is_energy,
                                                visualize)
 
             stopTime = time()

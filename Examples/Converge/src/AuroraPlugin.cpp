@@ -22,6 +22,8 @@
 #include "DataManager.h"
 #include "PluginFeatures.h"
 #include "Logger.h"
+#include "PluginOptionsManager.h"
+#include "PluginOptions.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,6 +57,8 @@ void initPlugin(){
     //grab the layout data, this function returns a pointer to a statically allocated buffer. Safe to call as many time as required.
     //Dont delete this pointer. The memory is managed automatically.
     LayoutData* layoutData = getLayoutData();
+
+    getOptionValue("transTime", transTime);
     
     rotateAuroraPanels(layoutData, &layoutData->globalOrientation);
     

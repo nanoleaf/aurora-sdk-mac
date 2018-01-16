@@ -1,4 +1,9 @@
-import httplib
+try:
+    # Python 2.7
+    import httplib
+except ImportError:
+    # Python 3
+    import http.client as httplib
 import socket
 import json
 from printer import *
@@ -43,14 +48,14 @@ def request_token():
     parsed_json = ""
     try:
         status, reason, body = send("POST", "/api/v1/new", "")
-        parsed_json = json.loads(body)
+        parsed_json = json.loads(body.decode("utf-8"))
     except:
         pass
 
-    if 'auth_token' not in parsed_json:
+    if "auth_token" not in parsed_json:
         return False, ""
 
-    auth_token = parsed_json['auth_token']
+    auth_token = parsed_json["auth_token"]
     if status == 200 and reason == "OK" and len(auth_token) == 32:
         return True, auth_token
     else:
