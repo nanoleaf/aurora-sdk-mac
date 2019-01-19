@@ -131,4 +131,6 @@ void getPluginFrame(Frame_t* frames, int* nFrames, int* sleepTime){
  */
 void pluginCleanup(){
 	//do deallocation here
+
+	freeFrameSlices(frameSlices);
 }
